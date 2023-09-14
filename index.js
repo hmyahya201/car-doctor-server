@@ -1,4 +1,5 @@
 const express = require("express");
+const jwt = require('jsonwebtoken')
 const cors = require("cors");
 const { MongoClient, ServerApiVersion, ObjectId } = require('mongodb');
 require('dotenv').config()
@@ -20,6 +21,18 @@ const port = process.env.PORT || 5000;
    }
  });
  
+  const verifyJWT = (req, res, next)=>{
+    console.log("hit on backend")
+    console.log(req.headers.authorization)
+    const authorization = req.headers.authorization
+    if(!authorization){
+      return res.send({error: true, message: "Un authorised access"})
+    }
+    const token = authorization.split(' ')[1]
+    console.log("verify jwt token", token)
+  }
+
+
  async function run() {
    try {
      // Connect the client to the server	(optional starting in v4.7)
@@ -27,7 +40,16 @@ const port = process.env.PORT || 5000;
 
      const serviceCollections = client.db("carDoctor").collection("services");
      const bookingCollections = client.db("carDoctor").collection("bookings");
+      //jwt
+      app.post('/jwt', (req, res)=>{
+        const user = req.body;
+        const token = jwt.sign(user, process.env.ACCESS_TOKEN_SECRET, {
+          expiresIn: "1h"
+        })
+        res.send({token})
+      })
 
+     //service
       app.get('/services', async(req, res)=>{
       const cursor = serviceCollections.find();
       const result = await cursor.toArray();
@@ -56,12 +78,36 @@ const port = process.env.PORT || 5000;
       console.log(booking)
     })
 
-    app.get('/bookings', async(req, res)=>{
+    app.get('/bookings', verifyJWT, async(req, res)=>{
+     // console.log(req.headers.authorization)
       let query = {};
       if(req.query?.email) {
         query = {email: req.query.email}
       }
       const result = await bookingCollections.find(query).toArray();
+      res.send(result)
+    })
+
+    app.patch('/bookings/:id', async(req, res)=>{
+      const id = req.params.id;
+      const filter = {_id: new ObjectId(id)}
+      const updateBooking = req.body;
+      console.log(updateBooking)
+
+      const updateDoc = {
+        $set: {
+          status: updateBooking.status
+        },
+      };
+
+      const result = await bookingCollections.updateOne(filter, updateDoc)
+      res.send(result)
+    })
+
+    app.delete('/bookings/:id', async(req, res)=>{
+      const id = req.params.id;
+      const query = {_id: new ObjectId(id)};
+      const result = await bookingCollections.deleteOne(query);
       res.send(result)
     })
 
